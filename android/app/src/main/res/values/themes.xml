@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.Huginn.Splash" parent="Theme.AppCompat.NoActionBar">
+        <item name="windowSplashScreenBackground">@color/tp_dark_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_logo</item>
+        <item name="postSplashScreenTheme">@style/Theme.Huginn</item>
+        <item name="android:fontFamily">@font/vazir_family</item>
+    </style>
+
+    <!-- System/AppCompat dialogs (e.g. TimePickerDialog) inherit Vazir. -->
+    <style name="Theme.Huginn.Dialog" parent="Theme.AppCompat.Dialog.Alert">
+        <item name="android:fontFamily">@font/vazir_family</item>
+    </style>
+
+    <style name="Theme.Huginn" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:windowBackground">@color/tp_light_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/tp_light_background</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:fontFamily">@font/vazir_family</item>
+        <item name="android:alertDialogTheme">@style/Theme.Huginn.Dialog</item>
+        <item name="alertDialogTheme">@style/Theme.Huginn.Dialog</item>
+    </style>
+
+</resources>

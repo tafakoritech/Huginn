@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Debug-only network config: cleartext HTTP is allowed so local development
+    can reach the Huginn API on the emulator loopback (10.0.2.2) or any
+    host/LAN address passed via -PHUGINN_API_BASE_URL=http://<host>:8080/.
+    Release/staging remain HTTPS-only (see app/src/main/res/xml).
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

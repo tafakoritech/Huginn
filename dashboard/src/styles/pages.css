@@ -1,0 +1,83 @@
+/* =========================================================================
+   Page-specific styles
+   ========================================================================= */
+
+/* --- Login page --- */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-page);
+  padding: var(--space-5);
+}
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+  padding: var(--space-8);
+}
+.login-brand { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); margin-bottom: var(--space-6); }
+.login-brand .brand-logo { width: 48px; height: 48px; }
+.login-brand h1 { font-size: 20px; }
+.login-brand p { color: var(--text-3); font-size: 12.5px; }
+.login-error { background: var(--error-soft); color: var(--error); border-radius: var(--radius-md); padding: var(--space-3); font-size: 13px; margin-bottom: var(--space-4); border: 1px solid transparent; }
+
+/* --- Dashboard grid --- */
+.dashboard-section { margin-bottom: var(--space-6); }
+.section-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-3); }
+.section-title h2 { font-size: 15px; font-weight: 700; }
+
+.chart-card { padding: var(--space-5); }
+.chart-card h4 { font-size: 13.5px; font-weight: 700; margin-bottom: var(--space-4); color: var(--text-1); }
+
+/* --- Lead detail --- */
+.lead-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-5);
+}
+.lead-hero-title { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.lead-hero-title h1 { font-size: 20px; }
+.lead-hero-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.lead-meta-row { display: flex; gap: var(--space-5); flex-wrap: wrap; margin-top: var(--space-3); font-size: 13px; color: var(--text-2); }
+.lead-meta-row .meta { display: inline-flex; align-items: center; gap: 5px; }
+.lead-meta-row svg { width: 14px; height: 14px; color: var(--text-3); }
+
+/* --- Import batch --- */
+.processing-hero { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; padding: var(--space-5); margin-bottom: var(--space-5); }
+
+/* --- Agent cards --- */
+.agent-card { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); }
+.agent-card-head { display: flex; align-items: center; gap: var(--space-3); }
+.agent-card-head .avatar { width: 40px; height: 40px; font-size: 16px; }
+.agent-card-head .agent-name { font-weight: 700; font-size: 14px; }
+.agent-card .agent-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-2); }
+.agent-stat { background: var(--bg-surface-2); border-radius: var(--radius-sm); padding: 6px 10px; }
+.agent-stat .as-label { font-size: 10.5px; color: var(--text-3); font-weight: 600; }
+.agent-stat .as-value { font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+/* --- Follow-up emphasis --- */
+.fu-overdue { background: var(--warning-soft); color: var(--warning); font-weight: 700; border-radius: var(--radius-sm); padding: 2px 8px; display: inline-block; }
+
+/* --- Report statuses --- */
+.report-overdue { background: var(--error-soft); color: var(--error); font-weight: 700; border-radius: var(--radius-sm); padding: 2px 8px; display: inline-block; }
+
+/* --- Settings --- */
+.settings-section { max-width: 760px; }
+.settings-section .card { margin-bottom: var(--space-5); }
+
+/* --- Sidebar + main responsive refinements --- */
+@media (max-width: 900px) {
+  .app-content { padding: var(--space-4); }
+  .page-header h1 { font-size: 18px; }
+  .topbar-search { max-width: 200px; }
+  .metric-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .form-row { grid-template-columns: 1fr; }
+}

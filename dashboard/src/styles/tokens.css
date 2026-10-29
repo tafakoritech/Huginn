@@ -1,0 +1,169 @@
+/* =========================================================================
+   Huginn Design Tokens — Tafakor Pardazan Theme
+   Spectrum-inspired: clear hierarchy, consistent spacing, accessible states.
+   ========================================================================= */
+
+:root {
+  /* --- Light theme (default) --- */
+  --tp-bg: #f5f9f7;
+  --tp-bg-secondary: #edf5f1;
+  --tp-card: #ffffff;
+  --tp-card-active: #e3f2e8;
+  --tp-divider: #d7e4de;
+  --tp-border: #c5d8cf;
+
+  --tp-text-primary: #021c25;
+  --tp-text-secondary: #49635f;
+  --tp-text-muted: #7c908b;
+
+  --tp-brand: #69b437;
+  --tp-brand-hover: #5aa22e;
+  --tp-highlight: #91da73;
+  --tp-deep: #23643d;
+  --tp-dark-green: #165a54;
+  --tp-teal: #0e3338;
+
+  --tp-success: #49a85a;
+  --tp-info: #3c82c4;
+  --tp-warning: #d99a28;
+  --tp-error: #d95c5c;
+  --tp-neutral: #80918c;
+
+  --tp-sidebar-bg: #0e3338;
+  --tp-sidebar-text: #cde3dd;
+  --tp-sidebar-muted: #8fb3ab;
+  --tp-sidebar-hover: #165a54;
+  --tp-sidebar-active: #23643d;
+  --tp-header-bg: #ffffff;
+
+  /* Semantic layers */
+  --bg-page: var(--tp-bg);
+  --bg-surface: var(--tp-card);
+  --bg-surface-2: var(--tp-bg-secondary);
+  --bg-raised: var(--tp-card);
+  --bg-sunken: var(--tp-bg-secondary);
+
+  --text-1: var(--tp-text-primary);
+  --text-2: var(--tp-text-secondary);
+  --text-3: var(--tp-text-muted);
+
+  --border-default: var(--tp-border);
+  --border-strong: #a9c6ba;
+  --divider: var(--tp-divider);
+
+  --accent: var(--tp-brand);
+  --accent-hover: var(--tp-brand-hover);
+  --accent-contrast: #ffffff;
+  --accent-soft: rgba(105, 180, 55, 0.14);
+
+  --success: var(--tp-success);
+  --success-soft: rgba(73, 168, 90, 0.14);
+  --info: var(--tp-info);
+  --info-soft: rgba(60, 130, 196, 0.14);
+  --warning: var(--tp-warning);
+  --warning-soft: rgba(217, 154, 40, 0.15);
+  --error: var(--tp-error);
+  --error-soft: rgba(217, 92, 92, 0.14);
+  --neutral: var(--tp-neutral);
+  --neutral-soft: rgba(128, 145, 140, 0.15);
+
+  --shadow-1: 0 1px 2px rgba(2, 28, 37, 0.06), 0 1px 3px rgba(2, 28, 37, 0.05);
+  --shadow-2: 0 2px 6px rgba(2, 28, 37, 0.09), 0 4px 12px rgba(2, 28, 37, 0.06);
+  --shadow-3: 0 8px 24px rgba(2, 28, 37, 0.14), 0 2px 8px rgba(2, 28, 37, 0.08);
+
+  --focus-ring: 0 0 0 3px rgba(105, 180, 55, 0.35);
+
+  --font-family: 'Vazirmatn', 'Segoe UI', Tahoma, 'Noto Sans Arabic', system-ui, -apple-system, sans-serif;
+  --font-mono: 'SF Mono', 'Cascadia Code', Consolas, 'Liberation Mono', Menlo, monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  --sidebar-width: 256px;
+  --sidebar-width-collapsed: 64px;
+  --header-height: 60px;
+
+  --transition-fast: 120ms ease;
+  --transition-base: 180ms ease;
+}
+
+/* --- Dark theme (TP palette) --- */
+[data-theme='dark'] {
+  --tp-bg: #021c25;
+  --tp-bg-secondary: #091e27;
+  --tp-card: #0e3338;
+  --tp-card-active: #165a54;
+  --tp-divider: #0d2d23;
+  --tp-border: #165a54;
+
+  --tp-text-primary: #e8f4f0;
+  --tp-text-secondary: #b8d0ca;
+  --tp-text-muted: #7ea49c;
+
+  --tp-brand: #69b437;
+  --tp-brand-hover: #78c744;
+  --tp-highlight: #91da73;
+  --tp-deep: #23643d;
+  --tp-dark-green: #165a54;
+  --tp-teal: #0e3338;
+
+  --tp-success: #6cc47a;
+  --tp-info: #5a9cd4;
+  --tp-warning: #e0ab4a;
+  --tp-error: #e07b7b;
+  --tp-neutral: #80918c;
+
+  --tp-sidebar-bg: #053a3d;
+  --tp-sidebar-text: #cde3dd;
+  --tp-sidebar-muted: #8fb3ab;
+  --tp-sidebar-hover: #165a54;
+  --tp-sidebar-active: #23643d;
+  --tp-header-bg: #091e27;
+
+  --bg-page: var(--tp-bg);
+  --bg-surface: var(--tp-card);
+  --bg-surface-2: var(--tp-bg-secondary);
+  --bg-raised: #0e3338;
+  --bg-sunken: #053a3d;
+
+  --text-1: var(--tp-text-primary);
+  --text-2: var(--tp-text-secondary);
+  --text-3: var(--tp-text-muted);
+
+  --border-default: #165a54;
+  --border-strong: #23643d;
+  --divider: #0d2d23;
+
+  --accent: #69b437;
+  --accent-hover: #78c744;
+  --accent-contrast: #0b1f16;
+  --accent-soft: rgba(105, 180, 55, 0.18);
+
+  --success: #6cc47a;
+  --success-soft: rgba(108, 196, 122, 0.16);
+  --info: #5a9cd4;
+  --info-soft: rgba(90, 156, 212, 0.16);
+  --warning: #e0ab4a;
+  --warning-soft: rgba(224, 171, 74, 0.16);
+  --error: #e07b7b;
+  --error-soft: rgba(224, 123, 123, 0.16);
+  --neutral: #80918c;
+  --neutral-soft: rgba(128, 145, 140, 0.16);
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.25);
+  --shadow-2: 0 2px 6px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.28);
+  --shadow-3: 0 8px 24px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.35);
+
+  --focus-ring: 0 0 0 3px rgba(145, 218, 115, 0.35);
+}

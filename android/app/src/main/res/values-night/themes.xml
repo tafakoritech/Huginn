@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.Huginn" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@color/tp_dark_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/tp_dark_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:fontFamily">@font/vazir_family</item>
+        <item name="android:alertDialogTheme">@style/Theme.Huginn.Dialog</item>
+        <item name="alertDialogTheme">@style/Theme.Huginn.Dialog</item>
+    </style>
+
+</resources>

@@ -1,0 +1,2288 @@
+openapi: 3.0.3
+info:
+  title: Huginn Backend API
+  description: |
+    Huginn is a market-intelligence, lead-discovery, lead-qualification and
+    first-contact platform. It prepares contact actions but never sends
+    messages automatically, and transfers only qualified leads to Muninn CRM.
+  version: 1.0.0
+  contact:
+    name: Tafakor Pardazan
+
+servers:
+  - url: http://localhost:8080/api/v1
+
+tags:
+  - name: Auth
+  - name: Me
+  - name: Users
+  - name: Imports
+  - name: Documents
+  - name: Leads
+  - name: Interactions
+  - name: Dashboard
+
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Authenticate and obtain tokens
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [login, password]
+              properties:
+                login: { type: string, example: manager }
+                password: { type: string, format: password }
+                device: { type: string }
+      responses:
+        '200':
+          description: Tokens issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string }
+                  refresh_token: { type: string }
+                  expires_in: { type: number }
+                  token_type: { type: string, example: Bearer }
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotate a refresh token
+      operationId: refresh
+      parameters:
+        - in: header
+          name: X-Refresh-Token
+          schema: { type: string }
+      responses:
+        '200':
+          description: New token pair (old refresh token is revoked)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke the refresh token
+      operationId: logout
+      responses:
+        '204': { description: Revoked }
+
+  /me:
+    get:
+      tags: [Me]
+      summary: Current user profile
+      security: [bearerAuth: []]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /me/work-queue:
+    get:
+      tags: [Me]
+      summary: Server-derived prioritized daily work queue
+      security: [bearerAuth: []]
+      responses:
+        '200':
+          description: Prioritized work items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkQueueItem'
+
+  /me/pending-reports:
+    get:
+      tags: [Me]
+      summary: Mandatory report enforcement state
+      security: [bearerAuth: []]
+      responses:
+        '200':
+          description: requires_report true blocks further contact actions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requires_report: { type: boolean }
+                  interaction_id: { type: string, format: uuid }
+
+  /me/reports:
+    get:
+      tags: [Me]
+      summary: Submitted contact reports visible to the current user
+      description: |
+        Global Reports screen source. Returns persisted contact_reports (NOT
+        pending-report placeholders) enriched with lead/interaction context in a
+        single flat, paginated response. RBAC: a sales agent sees reports on
+        interactions they performed (interactions.user_id) or reports they
+        submitted (contact_reports.submitted_by); managers/admins see all
+        reports. Empty result is items=[], total=0. A database failure returns an
+        error, never a silent empty list.
+      security: [bearerAuth: []]
+      parameters:
+        - name: limit
+          in: query
+          description: Max items per page (1-200, default 50)
+          required: false
+          schema: { type: integer, default: 50, maximum: 200 }
+        - name: offset
+          in: query
+          description: Pagination offset (0-based)
+          required: false
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Paginated submitted reports
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MyReport'
+                  total: { type: integer, description: Total matching reports }
+                  count: { type: integer, description: Items in this page }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          description: Database/query failure (never returned as items=[])
+
+  /users:
+    post:
+      tags: [Users]
+      summary: Create user (manager)
+      security: [bearerAuth: []]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUser'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+    get:
+      tags: [Users]
+      summary: List users (manager)
+      security: [bearerAuth: []]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+
+  /users/{userID}:
+    get:
+      tags: [Users]
+      summary: Get user
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/userID'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+    patch:
+      tags: [Users]
+      summary: Update user (name/email/mobile/role)
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/userID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUser'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /users/{userID}/deactivate:
+    post:
+      tags: [Users]
+      summary: Deactivate user and revoke sessions
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/userID'
+      responses:
+        '204': { description: Deactivated }
+
+  /users/{userID}/reactivate:
+    post:
+      tags: [Users]
+      summary: Reactivate user
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/userID'
+      responses:
+        '204': { description: Reactivated }
+
+  /users/{userID}/reset-password:
+    post:
+      tags: [Users]
+      summary: Reset credentials
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/userID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password: { type: string, format: password }
+      responses:
+        '204': { description: Password reset }
+
+  /imports:
+    post:
+      tags: [Imports]
+      summary: Create an import batch
+      security: [bearerAuth: []]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBatch'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportBatch'
+    get:
+      tags: [Imports]
+      summary: List import batches
+      security: [bearerAuth: []]
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/BatchStatus' } }
+        - { name: limit, in: query, schema: { type: integer, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  batches:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ImportBatch'
+
+  /imports/{batchID}:
+    get:
+      tags: [Imports]
+      summary: Batch detail with documents
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/batchID'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  batch:
+                    $ref: '#/components/schemas/ImportBatch'
+                  documents:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SourceDocument'
+
+  /imports/{batchID}/queue:
+    post:
+      tags: [Imports]
+      summary: Queue a batch for processing (worker extracts + LLM analyzes)
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/batchID'
+      responses:
+        '200':
+          description: Batch queued
+
+  /imports/{batchID}/documents:
+    post:
+      tags: [Imports]
+      summary: Upload a source document (multipart file)
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/batchID'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceDocument'
+
+  /imports/{batchID}/raw-text:
+    post:
+      tags: [Imports]
+      summary: Add a raw-text document to a batch
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/batchID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string }
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceDocument'
+
+  /documents/{docID}:
+    get:
+      tags: [Documents]
+      summary: Document detail (status, extracted text)
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/docID'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceDocument'
+
+  /leads:
+    get:
+      tags: [Leads]
+      summary: List/search/filter leads
+      security: [bearerAuth: []]
+      parameters:
+        - { name: scope, in: query, schema: { type: string, enum: [mine, unassigned, team, all] } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/LeadStatus' } }
+        - { name: search, in: query, schema: { type: string } }
+        - { name: city, in: query, schema: { type: string } }
+        - { name: province, in: query, schema: { type: string } }
+        - { name: industry, in: query, schema: { type: string } }
+        - { name: business_type, in: query, schema: { type: string } }
+        - { name: tag, in: query, schema: { type: string } }
+        - { name: batch_id, in: query, schema: { type: string, format: uuid } }
+        - { name: document_id, in: query, schema: { type: string, format: uuid } }
+        - { name: min_score, in: query, schema: { type: integer } }
+        - { name: max_score, in: query, schema: { type: integer } }
+        - { name: qualified, in: query, schema: { type: boolean } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: page_size, in: query, schema: { type: integer, default: 50 } }
+        - { name: sort, in: query, schema: { type: string, enum: [created_at, score, company, updated] } }
+        - { name: order, in: query, schema: { type: string, enum: [ASC, DESC] } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  leads:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Lead'
+                  total: { type: integer }
+                  page: { type: integer }
+                  size: { type: integer }
+    post:
+      tags: [Leads]
+      summary: Create a lead manually
+      security: [bearerAuth: []]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLead'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadDetail'
+
+  /leads/{leadID}:
+    get:
+      tags: [Leads]
+      summary: Lead detail with contacts, permissions and workflow hints
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadDetail'
+    patch:
+      tags: [Leads]
+      summary: Update lead fields
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateLead'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadDetail'
+
+  /leads/{leadID}/timeline:
+    get:
+      tags: [Leads]
+      summary: Chronological lead timeline
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timeline:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TimelineEvent'
+
+  /leads/{leadID}/versions:
+    get:
+      tags: [Leads]
+      summary: Immutable versioned change history for a lead (admins/managers)
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+        - name: limit
+          in: query
+          schema: { type: integer, default: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  versions:
+                    type: array
+                    items: { $ref: '#/components/schemas/LeadVersion' }
+                  total: { type: integer }
+                  page_size: { type: integer }
+                  offset: { type: integer }
+
+  /leads/{leadID}/versions/{versionID}:
+    get:
+      tags: [Leads]
+      summary: A single immutable snapshot of a lead
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+        - name: versionID
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version: { $ref: '#/components/schemas/LeadVersion' }
+
+  /leads/{leadID}/duplicates:
+    get:
+      tags: [Leads]
+      summary: Possible duplicates for a lead
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  possible_duplicates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DuplicatePair'
+
+  /leads/{leadID}/notes:
+    get:
+      tags: [Leads]
+      summary: List notes
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Note'
+    post:
+      tags: [Leads]
+      summary: Add a note
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string }
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+
+  /leads/{leadID}/contacts:
+    get:
+      tags: [Leads]
+      summary: List lead contacts
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  contacts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Contact'
+    post:
+      tags: [Leads]
+      summary: Add a contact to a lead
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Contact'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contact'
+
+  /leads/{leadID}/contacts/{contactID}/vcard:
+    get:
+      tags: [Leads]
+      summary: Download a vCard (no phone contact permission required)
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+        - $ref: '#/components/parameters/contactID'
+      responses:
+        '200':
+          description: vCard 3.0
+          content:
+            text/vcard:
+              schema: { type: string }
+
+  /leads/{leadID}/assign:
+    post:
+      tags: [Leads]
+      summary: Assign a lead to an agent
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [assignee_id]
+              properties:
+                assignee_id: { type: string, format: uuid }
+                method: { type: string, enum: [manual, bulk, round_robin], default: manual }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lead'
+
+  /leads/{leadID}/assign-bulk:
+    post:
+      tags: [Leads]
+      summary: Round-robin assignment
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                lead_ids: { type: array, items: { type: string, format: uuid } }
+                agent_ids: { type: array, items: { type: string, format: uuid } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assigned: { type: integer }
+
+  /leads/{leadID}/merge:
+    post:
+      tags: [Leads]
+      summary: Merge another lead into this one (audited)
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source_lead_id]
+              properties:
+                source_lead_id: { type: string, format: uuid }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  merged: { type: boolean }
+                  target_lead_id: { type: string }
+                  source_lead_id: { type: string }
+
+  /leads/{leadID}/contact-actions:
+    post:
+      tags: [Leads]
+      summary: Prepare a contact action (never sends anything)
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel]
+              properties:
+                contact_id: { type: string, format: uuid }
+                channel:
+                  $ref: '#/components/schemas/Channel'
+                objective: { type: string, default: FIRST_CONTACT }
+      responses:
+        '201':
+          description: Interaction created; report becomes mandatory
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionResult'
+        '403':
+          description: Mandatory report pending
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /leads/{leadID}/call-scenario:
+    post:
+      tags: [Leads]
+      summary: Generate a suggested call scenario for a lead (no interaction created)
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                contact_id: { type: string, format: uuid, nullable: true }
+                sales_angle:
+                  type: string
+                  description: Optional conversation angle override. When omitted, the next angle in the rotation is used so repeated requests stay unique.
+      responses:
+        '200':
+          description: Generated call scenario
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lead_id: { type: string }
+                  generation_id: { type: string }
+                  sales_angle: { type: string }
+                  project_id: { type: string }
+                  project_title: { type: string }
+                  scenario:
+                    $ref: '#/components/schemas/CallScenario'
+        '404':
+          description: Lead not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /leads/{leadID}/call-scenarios:
+    get:
+      tags: [Leads]
+      summary: List all saved and generated call scenarios for a lead
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+      responses:
+        '200':
+          description: List of call scenarios
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CallScenario'
+    post:
+      tags: [Leads]
+      summary: Create a manual call scenario for a lead
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallScenarioInput'
+      responses:
+        '201':
+          description: Created call scenario
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallScenario'
+
+  /leads/{leadID}/call-scenarios/{scenarioID}:
+    get:
+      tags: [Leads]
+      summary: Get a single call scenario by ID
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+        - name: scenarioID
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Call scenario
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallScenario'
+        '404':
+          description: Call scenario not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags: [Leads]
+      summary: Update a call scenario
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+        - name: scenarioID
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallScenarioInput'
+      responses:
+        '200':
+          description: Updated call scenario
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallScenario'
+    delete:
+      tags: [Leads]
+      summary: Delete a call scenario
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+        - name: scenarioID
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204':
+          description: Call scenario deleted
+
+  /leads/{leadID}/followups:
+    post:
+      tags: [Leads]
+      summary: Schedule a follow-up
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [due_at]
+              properties:
+                assigned_to: { type: string, format: uuid }
+                interaction_id: { type: string, format: uuid }
+                due_at: { type: string, format: date-time }
+                type: { type: string, default: FOLLOW_UP }
+                description: { type: string }
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUp'
+
+  /followups:
+    get:
+      tags: [FollowUps]
+      summary: List follow-ups (scoped views + filters + pagination)
+      security: [bearerAuth: []]
+      parameters:
+        - { name: view, in: query, schema: { type: string, enum: [my, pending, overdue, today, upcoming, completed, all] } }
+        - { name: status, in: query, schema: { type: string, enum: [PENDING, COMPLETED, CANCELLED, SNOOZED] } }
+        - { name: assigned_user, in: query, schema: { type: string, format: uuid } }
+        - { name: lead_id, in: query, schema: { type: string, format: uuid } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: overdue, in: query, schema: { type: boolean } }
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 200 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      responses:
+        '200':
+          description: Follow-ups matching the filters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  followups:
+                    type: array
+                    items: { $ref: '#/components/schemas/FollowUpListItem' }
+                  count: { type: integer }
+                  total: { type: integer }
+    post:
+      tags: [FollowUps]
+      summary: Create a follow-up for a lead
+      security: [bearerAuth: []]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lead_id, due_at]
+              properties:
+                lead_id: { type: string, format: uuid }
+                contact_id: { type: string, format: uuid }
+                assigned_to: { type: string, format: uuid }
+                interaction_id: { type: string, format: uuid }
+                due_at: { type: string, format: date-time }
+                type: { type: string, default: FOLLOW_UP }
+                title: { type: string }
+                description: { type: string }
+                channel: { type: string }
+                priority: { type: string, enum: [LOW, MEDIUM, HIGH], default: MEDIUM }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUp'
+
+  /followups/{followupID}:
+    get:
+      tags: [FollowUps]
+      summary: Get a single follow-up
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/followupID'
+      responses:
+        '200':
+          description: The follow-up
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUp'
+        '404':
+          description: Not found
+    patch:
+      tags: [FollowUps]
+      summary: Update editable fields (also acts as reschedule via due_at)
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/followupID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                assigned_to: { type: string, format: uuid }
+                title: { type: string }
+                description: { type: string }
+                channel: { type: string }
+                type: { type: string }
+                priority: { type: string, enum: [LOW, MEDIUM, HIGH] }
+                due_at: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUp'
+    delete:
+      tags: [FollowUps]
+      summary: Cancel a follow-up (soft delete -> CANCELLED)
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/followupID'
+      responses:
+        '200':
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUp'
+
+  /followups/{followupID}/complete:
+    post:
+      tags: [FollowUps]
+      summary: Complete a follow-up with an optional note/outcome
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/followupID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note: { type: string }
+                outcome: { type: string }
+      responses:
+        '200':
+          description: Completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUp'
+
+  /followups/{followupID}/reopen:
+    post:
+      tags: [FollowUps]
+      summary: Reopen a completed follow-up back to pending
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/followupID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                due_at: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Reopened
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUp'
+
+  /followups/{followupID}/reschedule:
+    post:
+      tags: [FollowUps]
+      summary: Move a follow-up to a new due time (back to pending)
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/followupID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [due_at]
+              properties:
+                due_at: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Rescheduled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUp'
+
+  /leads/{leadID}/qualify:
+    post:
+      tags: [Leads]
+      summary: Qualify a lead against configured rules
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QualifyRequest'
+      responses:
+        '200':
+          description: Qualified
+        '409':
+          description: Rules not satisfied (details.missing lists failing rules)
+
+  /leads/{leadID}/disqualify:
+    post:
+      tags: [Leads]
+      summary: Disqualify with a structured reason
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  $ref: '#/components/schemas/DisqualifyReason'
+                explanation: { type: string }
+      responses:
+        '200':
+          description: Disqualified
+
+  /leads/{leadID}/export/muninn:
+    post:
+      tags: [Leads]
+      summary: Queue a qualified lead for Muninn export (idempotent)
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/leadID'
+      responses:
+        '202':
+          description: Queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Export'
+        '409':
+          description: Already exported or not qualified
+
+  /interactions/{interactionID}/report:
+    post:
+      tags: [Interactions]
+      summary: Submit the mandatory contact report
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/interactionID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportRequest'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactReport'
+
+  /interactions/{interactionID}/open:
+    post:
+      tags: [Interactions]
+      summary: Mark an interaction as opened (client external-app launch)
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/interactionID'
+      responses:
+        '204': { description: Opened }
+
+  /interactions/{interactionID}/void:
+    post:
+      tags: [Interactions]
+      summary: Manager override to void a pending report (reason required, audited)
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/interactionID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        '204': { description: Voided }
+
+  /dashboard:
+    get:
+      tags: [Dashboard]
+      summary: Manager dashboard metrics + breakdowns
+      security: [bearerAuth: []]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManagerMetrics'
+
+  /dashboard/me:
+    get:
+      tags: [Dashboard]
+      summary: Agent dashboard metrics
+      security: [bearerAuth: []]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentMetrics'
+
+  /change-history:
+    get:
+      tags: [Audit]
+      summary: Recent versioned lead edits across all leads (admin change history)
+      security: [bearerAuth: []]
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ChangeHistoryItem' }
+                  count: { type: integer }
+
+  /settings/messaging:
+    get:
+      tags: [Settings]
+      summary: Configurable sales-outreach prompt strategy
+      security: [bearerAuth: []]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessagingPrompts'
+    patch:
+      tags: [Settings]
+      summary: Update the sales-outreach prompt strategy
+      security: [bearerAuth: []]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessagingPrompts'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessagingPrompts'
+
+  /projects:
+    get:
+      tags: [Projects]
+      summary: List projects with lead counts (from project_leads)
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - { name: status, in: query, schema: { type: string } }
+        - { name: campaign_id, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  projects:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Project'
+                  total: { type: integer }
+                  page: { type: integer }
+                  size: { type: integer }
+    post:
+      tags: [Projects]
+      summary: Create a project (optionally under a campaign)
+      security: [bearerAuth: []]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectInput'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project: { $ref: '#/components/schemas/Project' }
+                  lead_count: { type: integer }
+                  related_leads:
+                    $ref: '#/components/schemas/RelatedLeads'
+                  sales_activities: { type: array }
+
+  /projects/{projectID}:
+    get:
+      tags: [Projects]
+      summary: Project detail (lead_count and related_leads from project_leads)
+      security: [bearerAuth: []]
+      parameters:
+        - { name: projectID, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project: { $ref: '#/components/schemas/Project' }
+                  lead_count: { type: integer }
+                  related_leads: { $ref: '#/components/schemas/RelatedLeads' }
+                  sales_activities: { type: array }
+    put:
+      tags: [Projects]
+      summary: Update a project
+      security: [bearerAuth: []]
+      parameters:
+        - { name: projectID, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectInput'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+    delete:
+      tags: [Projects]
+      summary: Delete a project (project_leads cascade; Leads survive)
+      security: [bearerAuth: []]
+      parameters:
+        - { name: projectID, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Deleted }
+
+  /projects/{projectID}/leads:
+    get:
+      tags: [Projects]
+      summary: List project leads (join through project_leads)
+      security: [bearerAuth: []]
+      parameters:
+        - { name: projectID, in: path, required: true, schema: { type: string, format: uuid } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  leads:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProjectLeadRow'
+                  total: { type: integer }
+                  page: { type: integer }
+                  size: { type: integer }
+    post:
+      tags: [Projects]
+      summary: Bulk-attach existing Leads to the Project (never creates Leads)
+      security: [bearerAuth: []]
+      parameters:
+        - { name: projectID, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lead_ids]
+              properties:
+                lead_ids:
+                  type: array
+                  items: { type: string, format: uuid }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  attached: { type: integer }
+                  project_id: { type: string }
+
+  /projects/{projectID}/leads/{leadID}:
+    post:
+      tags: [Projects]
+      summary: Attach an existing Lead to the Project
+      security: [bearerAuth: []]
+      parameters:
+        - { name: projectID, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: leadID, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  lead_id: { type: string }
+                  project_id: { type: string }
+    patch:
+      tags: [Projects]
+      summary: Update the project-specific sales state of a Lead
+      security: [bearerAuth: []]
+      parameters:
+        - { name: projectID, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: leadID, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                stage: { type: string, nullable: true }
+                score: { type: integer, nullable: true }
+                assigned_user_id: { type: string, format: uuid, nullable: true }
+                last_contact_at: { type: string, format: date-time, nullable: true }
+                next_action: { type: string, nullable: true }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectLeadRow'
+    delete:
+      tags: [Projects]
+      summary: Detach a Lead from the Project (removes only the relationship)
+      security: [bearerAuth: []]
+      parameters:
+        - { name: projectID, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: leadID, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  lead_id: { type: string }
+                  project_id: { type: string, nullable: true }
+
+  /campaigns:
+    get:
+      tags: [Campaigns]
+      summary: List campaigns
+      security: [bearerAuth: []]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaigns:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Campaign'
+                  total: { type: integer }
+                  page: { type: integer }
+                  size: { type: integer }
+    post:
+      tags: [Campaigns]
+      summary: Create a campaign
+      security: [bearerAuth: []]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignInput'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+
+  /campaigns/{campaignID}:
+    get:
+      tags: [Campaigns]
+      summary: Campaign detail with its Projects
+      security: [bearerAuth: []]
+      parameters:
+        - { name: campaignID, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+    put:
+      tags: [Campaigns]
+      summary: Update a campaign
+      security: [bearerAuth: []]
+      parameters:
+        - { name: campaignID, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignInput'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+    delete:
+      tags: [Campaigns]
+      summary: Delete a campaign (its Projects are kept)
+      security: [bearerAuth: []]
+      parameters:
+        - { name: campaignID, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Deleted }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    userID:
+      name: userID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    batchID:
+      name: batchID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    docID:
+      name: docID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    leadID:
+      name: leadID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    followupID:
+      name: followupID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    contactID:
+      name: contactID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    interactionID:
+      name: interactionID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, default: 1 }
+    PageSize:
+      name: page_size
+      in: query
+      schema: { type: integer, default: 50 }
+
+  responses:
+    Unauthorized:
+      description: Invalid or missing credentials
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string, example: MANDATORY_REPORT_PENDING }
+            message: { type: string }
+            details:
+              type: object
+              additionalProperties: true
+
+    Role:
+      type: string
+      enum: [super_admin, sales_development_manager, sales_agent, viewer]
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        username: { type: string }
+        email: { type: string, nullable: true }
+        mobile: { type: string, nullable: true }
+        role: { $ref: '#/components/schemas/Role' }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        last_login_at: { type: string, format: date-time, nullable: true }
+
+    CreateUser:
+      type: object
+      required: [name, username, password, role]
+      properties:
+        name: { type: string }
+        username: { type: string }
+        email: { type: string }
+        mobile: { type: string }
+        password: { type: string, format: password }
+        role: { $ref: '#/components/schemas/Role' }
+
+    UpdateUser:
+      type: object
+      properties:
+        name: { type: string }
+        email: { type: string, nullable: true }
+        mobile: { type: string, nullable: true }
+        role: { $ref: '#/components/schemas/Role' }
+
+    BatchStatus:
+      type: string
+      enum: [UPLOADED, QUEUED, PROCESSING, REVIEW_REQUIRED, COMPLETED, FAILED]
+
+    SourceType:
+      type: string
+      enum: [CSV, XLSX, PDF, DOCX, TXT, HTML, JSON, IMAGE, RAW_TEXT, URL]
+
+    CreateBatch:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        source_type: { $ref: '#/components/schemas/SourceType' }
+
+    ImportBatch:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        source_type: { $ref: '#/components/schemas/SourceType' }
+        status: { $ref: '#/components/schemas/BatchStatus' }
+        created_by: { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+        total_documents: { type: integer }
+        total_candidates: { type: integer }
+        created_leads: { type: integer }
+        duplicate_candidates: { type: integer }
+        failed_items: { type: integer }
+
+    SourceDocument:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        batch_id: { type: string, format: uuid }
+        original_filename: { type: string, nullable: true }
+        mime_type: { type: string, nullable: true }
+        size_bytes: { type: integer, nullable: true }
+        status: { type: string }
+        extracted_text: { type: string, nullable: true }
+        extraction_error: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    LeadStatus:
+      type: string
+      enum: [NEW, READY, ASSIGNED, CONTACTING, FOLLOW_UP, QUALIFIED, DISQUALIFIED, EXPORTED_TO_MUNINN, ARCHIVED]
+
+    CreateLead:
+      type: object
+      required: [company_name]
+      properties:
+        company_name: { type: string }
+        display_name: { type: string, nullable: true }
+        business_type: { type: string, nullable: true }
+        industry: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        province: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        address: { type: string, nullable: true }
+        website: { type: string, nullable: true }
+        instagram: { type: string, nullable: true }
+        source_batch_id: { type: string, format: uuid, nullable: true }
+        source_document_id: { type: string, format: uuid, nullable: true }
+
+    UpdateLead:
+      type: object
+      description: >
+        Versioned PATCH. Only the fields present in the body are changed; every
+        edit appends a new immutable version (see GET /leads/{leadID}/versions).
+        An explicit null clears a field. `status` is a validated state transition.
+      properties:
+        company_name: { type: string }
+        display_name: { type: string, nullable: true }
+        business_type: { type: string, nullable: true }
+        industry: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        province: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        address: { type: string, nullable: true }
+        website: { type: string, nullable: true }
+        instagram: { type: string, nullable: true }
+        source: { type: string, nullable: true }
+        status: { $ref: '#/components/schemas/LeadStatus' }
+        note: { type: string, description: Optional reason for the edit, recorded on the version }
+        reason: { type: string, description: Alias for note }
+
+    LeadChange:
+      type: object
+      properties:
+        field: { type: string, description: 'Dot path, e.g. company_name or contact.<id>.is_primary_contact' }
+        old: { nullable: true, description: Previous value }
+        new: { nullable: true, description: New value }
+
+    LeadVersion:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        lead_id: { type: string, format: uuid }
+        version: { type: integer, description: Monotonic per-lead version number }
+        data: { type: object, description: Immutable snapshot of the lead at this version }
+        changes:
+          type: array
+          items: { $ref: '#/components/schemas/LeadChange' }
+        changed_by: { type: string, format: uuid, nullable: true }
+        changed_by_role: { type: string, nullable: true }
+        note: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        actor:
+          type: object
+          nullable: true
+          properties:
+            id: { type: string }
+            name: { type: string }
+
+    ChangeHistoryItem:
+      allOf:
+        - $ref: '#/components/schemas/LeadVersion'
+        - type: object
+          properties:
+            lead_name: { type: string }
+
+    CallScenario:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        generation_id: { type: string }
+        lead_id: { type: string, format: uuid }
+        sales_angle: { type: string }
+        opening_sentence: { type: string }
+        introduction: { type: string }
+        reason_for_call: { type: string }
+        value_proposition: { type: string }
+        discovery_questions:
+          type: array
+          items: { type: string }
+        likely_objections:
+          type: array
+          items: { type: string }
+        objection_responses:
+          type: array
+          items: { type: string }
+        recommended_next_step: { type: string }
+        closing_line: { type: string }
+        context_used:
+          type: object
+          properties:
+            project: { type: string }
+            lead: { type: string }
+            sales_angle: { type: string }
+        strategy:
+          $ref: '#/components/schemas/CallScenarioStrategy'
+        discovery_question_purposes:
+          type: array
+          items:
+            $ref: '#/components/schemas/DiscoveryQuestionPurpose'
+        conversation_branches:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConversationBranch'
+        is_generated: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CallScenarioStrategy:
+      type: object
+      description: Concise lead↔project fit analysis conclusions that drove the scenario.
+      properties:
+        lead_summary: { type: string }
+        fit:
+          type: string
+          enum: [high, medium, low, uncertain]
+        fit_summary: { type: string }
+        primary_angle: { type: string }
+        secondary_angle: { type: string }
+        likely_pain: { type: string }
+        uncertainties:
+          type: array
+          items: { type: string }
+        call_objective: { type: string }
+        tone: { type: string }
+
+    DiscoveryQuestionPurpose:
+      type: object
+      properties:
+        question: { type: string }
+        purpose: { type: string }
+
+    ConversationBranch:
+      type: object
+      properties:
+        condition: { type: string }
+        response_strategy: { type: string }
+
+    MessagingPrompts:
+      type: object
+      properties:
+        message_system_prompt: { type: string }
+        call_scenario_system_prompt: { type: string }
+        max_message_chars: { type: integer }
+        tone: { type: string }
+
+    Lead:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        company_name: { type: string }
+        display_name: { type: string, nullable: true }
+        business_type: { type: string, nullable: true }
+        industry: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        province: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        address: { type: string, nullable: true }
+        website: { type: string, nullable: true }
+        instagram: { type: string, nullable: true }
+        status: { $ref: '#/components/schemas/LeadStatus' }
+        quality_status:
+          type: string
+          enum: [RAW, NORMALIZED, VERIFIED, UNVERIFIED]
+        score: { type: integer }
+        owner_user_id: { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    LeadDetail:
+      type: object
+      properties:
+        lead: { $ref: '#/components/schemas/Lead' }
+        contacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Contact'
+        permissions:
+          type: object
+          properties:
+            can_call: { type: boolean }
+            can_message: { type: boolean }
+            can_edit: { type: boolean }
+            can_assign: { type: boolean }
+            can_qualify: { type: boolean }
+            can_export_to_muninn: { type: boolean }
+        workflow:
+          type: object
+          properties:
+            mandatory_report_pending: { type: boolean }
+            pending_report_id: { type: string, nullable: true }
+            next_action: { type: string, example: CALL }
+            next_follow_up_at: { type: string, format: date-time, nullable: true }
+
+    Contact:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        lead_id: { type: string, format: uuid }
+        first_name: { type: string, nullable: true }
+        last_name: { type: string, nullable: true }
+        full_name: { type: string, nullable: true }
+        job_title: { type: string, nullable: true }
+        department: { type: string, nullable: true }
+        mobile: { type: string, nullable: true }
+        mobile_normalized: { type: string, nullable: true, example: +989357578808 }
+        phone: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        whatsapp: { type: string, nullable: true }
+        telegram: { type: string, nullable: true }
+        bale: { type: string, nullable: true }
+        eitaa: { type: string, nullable: true }
+        rubika: { type: string, nullable: true }
+        is_decision_maker: { type: boolean }
+        is_primary_contact: { type: boolean }
+
+    Channel:
+      type: string
+      enum: [CALL, SMS, WHATSAPP, TELEGRAM, BALE, EITAA, RUBIKA, EMAIL, OTHER]
+
+    ActionResult:
+      type: object
+      properties:
+        interaction_id: { type: string, format: uuid }
+        channel: { $ref: '#/components/schemas/Channel' }
+        objective: { type: string }
+        requires_report: { type: boolean, example: true }
+        suggested_message: { type: string, nullable: true }
+        suggested_subject: { type: string, nullable: true }
+        deep_link:
+          type: object
+          properties:
+            channel: { $ref: '#/components/schemas/Channel' }
+            type: { type: string, enum: [tel, sms, wa.me, username, contact_save_required, mailto] }
+            target: { type: string }
+            username: { type: string }
+            text: { type: string }
+
+    DuplicatePair:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        lead_a_id: { type: string, format: uuid }
+        lead_b_id: { type: string, format: uuid }
+        reason: { type: string, enum: [deterministic_contact_match, fuzzy_company_name] }
+        similarity: { type: number }
+        status: { type: string, enum: [POSSIBLE, IGNORED, MERGED, DISTINCT] }
+        created_at: { type: string, format: date-time }
+
+    Note:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        lead_id: { type: string, format: uuid }
+        author_id: { type: string, format: uuid }
+        text: { type: string }
+        created_at: { type: string, format: date-time }
+
+    TimelineEvent:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        lead_id: { type: string, format: uuid }
+        event_type: { type: string, example: lead.assigned }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        actor_user_id: { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    FollowUp:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        lead_id: { type: string, format: uuid }
+        contact_id: { type: string, format: uuid, nullable: true }
+        project_id: { type: string, format: uuid, nullable: true }
+        campaign_id: { type: string, format: uuid, nullable: true }
+        interaction_id: { type: string, format: uuid, nullable: true }
+        assigned_to: { type: string, format: uuid, nullable: true }
+        created_by: { type: string, format: uuid, nullable: true }
+        title: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        channel: { type: string, nullable: true }
+        type: { type: string }
+        priority: { type: string, enum: [LOW, MEDIUM, HIGH], default: MEDIUM }
+        status: { type: string, enum: [PENDING, COMPLETED, CANCELLED, SNOOZED] }
+        due_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time, nullable: true }
+        snoozed_until: { type: string, format: date-time, nullable: true }
+        completion_note: { type: string, nullable: true }
+        outcome: { type: string, nullable: true }
+        source: { type: string, enum: [MANUAL, REPORT, SYSTEM] }
+        is_overdue: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    FollowUpListItem:
+      allOf:
+        - $ref: '#/components/schemas/FollowUp'
+        - type: object
+          properties:
+            company_name: { type: string }
+            contact_name: { type: string, nullable: true }
+            assignee_name: { type: string, nullable: true }
+            lead:
+              type: object
+              properties:
+                id: { type: string, format: uuid }
+                company_name: { type: string }
+            assignee:
+              type: object
+              properties:
+                id: { type: string, format: uuid }
+                name: { type: string }
+
+    ReportOutcome:
+      type: string
+      enum: [NO_ANSWER, BUSY, WRONG_NUMBER, ANSWERED, CALL_BACK_REQUESTED, NOT_RELEVANT, INTERESTED, HIGHLY_INTERESTED, DISQUALIFIED]
+
+    ReportRequest:
+      type: object
+      required: [outcome]
+      properties:
+        outcome: { $ref: '#/components/schemas/ReportOutcome' }
+        contact_reached: { type: boolean }
+        correct_person_reached: { type: boolean }
+        decision_maker_identified: { type: boolean }
+        decision_maker_name: { type: string }
+        decision_maker_role: { type: string }
+        interest_level: { type: string, enum: [NONE, LOW, MEDIUM, HIGH] }
+        need_level: { type: string, enum: [NONE, LOW, MEDIUM, HIGH] }
+        estimated_purchase_capacity: { type: string }
+        purchase_timing: { type: string }
+        main_objection: { type: string }
+        summary: { type: string }
+        next_action:
+          type: string
+          enum: [CALL_AGAIN, SEND_INFORMATION, SEND_SAMPLE, FOLLOW_UP, QUALIFY, DISQUALIFY, TRANSFER_TO_MUNINN, NONE]
+        follow_up_at: { type: string, format: date-time }
+        qualification_recommendation: { type: string }
+
+    ContactReport:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        interaction_id: { type: string, format: uuid }
+        outcome: { $ref: '#/components/schemas/ReportOutcome' }
+        interest_level: { type: string }
+        next_action: { type: string }
+        follow_up_at: { type: string, format: date-time, nullable: true }
+        submitted_by: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+
+    MyReport:
+      type: object
+      description: Submitted contact report for the global Reports screen (GET /me/reports).
+      properties:
+        id: { type: string, format: uuid }
+        interaction_id: { type: string, format: uuid }
+        lead_id: { type: string, format: uuid }
+        lead_name: { type: string, nullable: true }
+        company_name: { type: string, nullable: true }
+        channel: { $ref: '#/components/schemas/Channel' }
+        outcome: { $ref: '#/components/schemas/ReportOutcome' }
+        contact_reached: { type: boolean, nullable: true }
+        interest_level: { type: string, enum: [NONE, LOW, MEDIUM, HIGH], nullable: true }
+        need_level: { type: string, enum: [NONE, LOW, MEDIUM, HIGH], nullable: true }
+        main_objection: { type: string, nullable: true }
+        summary: { type: string, nullable: true }
+        next_action:
+          type: string
+          enum: [CALL_AGAIN, SEND_INFORMATION, SEND_SAMPLE, FOLLOW_UP, QUALIFY, DISQUALIFY, TRANSFER_TO_MUNINN, NONE]
+          nullable: true
+        follow_up_at: { type: string, format: date-time, nullable: true }
+        submitted_by: { type: string, format: uuid, nullable: true }
+        submitter_name: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    QualifyRequest:
+      type: object
+      properties:
+        business_relevant: { type: boolean }
+        contact_info_valid: { type: boolean }
+        meaningful_contact_occurred: { type: boolean }
+        need_or_interest_exists: { type: boolean }
+        decision_maker_identified: { type: boolean }
+        next_sales_action_exists: { type: boolean }
+        reason: { type: string }
+
+    DisqualifyReason:
+      type: string
+      enum: [NOT_RELEVANT, INVALID_CONTACT, TOO_SMALL, NO_INTEREST, NO_NEED, NO_BUDGET, DUPLICATE, OUT_OF_SCOPE, BUSINESS_CLOSED, OTHER]
+
+    Export:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        huginn_lead_id: { type: string, format: uuid }
+        muninn_lead_id: { type: string, nullable: true }
+        status: { type: string, enum: [PENDING, IN_PROGRESS, SUCCEEDED, FAILED, SKIPPED] }
+        attempt_count: { type: integer }
+        last_error: { type: string, nullable: true }
+        exported_at: { type: string, format: date-time, nullable: true }
+
+    WorkQueueItem:
+      type: object
+      properties:
+        lead_id: { type: string, format: uuid }
+        company_name: { type: string }
+        priority: { type: integer }
+        reason: { type: string, example: OVERDUE_FOLLOWUP }
+        status: { $ref: '#/components/schemas/LeadStatus' }
+        score: { type: integer }
+        due_at: { type: string, format: date-time, nullable: true }
+        next_action:
+          type: string
+          description: Actionable next step for the lead (status-derived or the latest report recommendation)
+          example: CALL
+
+    ManagerMetrics:
+      type: object
+      properties:
+        total_leads: { type: integer }
+        new_leads: { type: integer }
+        assigned_leads: { type: integer }
+        unassigned_leads: { type: integer }
+        calls_today: { type: integer }
+        successful_contacts: { type: integer }
+        no_answers: { type: integer }
+        pending_reports: { type: integer }
+        follow_ups_today: { type: integer }
+        overdue_follow_ups: { type: integer }
+        qualified_leads: { type: integer }
+        disqualified_leads: { type: integer }
+        qualification_rate: { type: number }
+        contact_rate: { type: number }
+        exported_to_muninn: { type: integer }
+
+    AgentMetrics:
+      type: object
+      properties:
+        assigned_leads: { type: integer }
+        calls_today: { type: integer }
+        remaining_work_queue: { type: integer }
+        pending_reports: { type: integer }
+        follow_ups: { type: integer }
+        qualified_leads: { type: integer }
+        contact_rate: { type: number }
+
+    Project:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string }
+        product_name: { type: string, nullable: true }
+        product_description: { type: string, nullable: true }
+        target_market: { type: string, nullable: true }
+        ideal_customer_profile: { type: string, nullable: true }
+        customer_pain_points: { type: string, nullable: true }
+        value_proposition: { type: string, nullable: true }
+        sales_objective: { type: string, nullable: true }
+        common_objections: { type: string, nullable: true }
+        created_by: { type: string, format: uuid, nullable: true }
+        status: { type: string, enum: [ACTIVE, ARCHIVED] }
+        campaign_id: { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ProjectInput:
+      type: object
+      required: [title, description]
+      properties:
+        title: { type: string }
+        description: { type: string }
+        product_name: { type: string, nullable: true }
+        product_description: { type: string, nullable: true }
+        target_market: { type: string, nullable: true }
+        ideal_customer_profile: { type: string, nullable: true }
+        customer_pain_points: { type: string, nullable: true }
+        value_proposition: { type: string, nullable: true }
+        sales_objective: { type: string, nullable: true }
+        common_objections: { type: string, nullable: true }
+        status: { type: string, enum: [ACTIVE, ARCHIVED] }
+        campaign_id: { type: string, format: uuid, nullable: true }
+
+    RelatedLeads:
+      type: object
+      properties:
+        leads:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectLeadRow'
+        total: { type: integer }
+        page: { type: integer }
+        size: { type: integer }
+
+    ProjectLeadRow:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        lead_id: { type: string, format: uuid }
+        stage: { type: string, nullable: true }
+        score: { type: integer, nullable: true }
+        assigned_user_id: { type: string, format: uuid, nullable: true }
+        last_contact_at: { type: string, format: date-time, nullable: true }
+        next_action: { type: string, nullable: true }
+        assigned_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        company_name: { type: string }
+        industry: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        province: { type: string, nullable: true }
+        lead_status: { type: string }
+        lead_score: { type: integer }
+        owner_user_id: { type: string, format: uuid, nullable: true }
+        owner_name: { type: string, nullable: true }
+
+    Campaign:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        objective: { type: string, nullable: true }
+        status: { type: string, enum: [ACTIVE, ARCHIVED] }
+        start_at: { type: string, format: date-time, nullable: true }
+        end_at: { type: string, format: date-time, nullable: true }
+        created_by: { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        projects:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              title: { type: string }
+              status: { type: string }
+              created_at: { type: string, format: date-time }
+
+    CampaignInput:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+        description: { type: string, nullable: true }
+        objective: { type: string, nullable: true }
+        status: { type: string, enum: [ACTIVE, ARCHIVED] }
+        start_at: { type: string, format: date-time, nullable: true }
+        end_at: { type: string, format: date-time, nullable: true }
+

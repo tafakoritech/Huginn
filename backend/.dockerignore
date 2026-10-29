@@ -1,0 +1,6 @@
+.git
+bin
+*.log
+.env
+.gitignore
+README.md
